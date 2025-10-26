@@ -232,6 +232,8 @@ AI assistant that can execute complex multi-step tasks. It can create files, run
 📎 *You can also send files!*
 Upload documents, images, or code files for the agent to process.
 
+📤 *Files created by the agent will be automatically sent to you!*
+
 *Send your task or file:*"""
     await query.message.edit_text(text, parse_mode='Markdown', reply_markup=get_back_menu())
     context.user_data['waiting_for'] = 'agent'
@@ -317,6 +319,7 @@ Complex multi-step tasks with AI
 • Executes multiple commands
 • Maintains session context
 • *Accepts file uploads* 📎
+• *Sends created files back* 📤
 • Just keep messaging to continue
 • Use "Clear Session" for fresh start
 
@@ -326,6 +329,13 @@ Send files in Agent Mode
 • Max size: 20 MB
 • Files saved to agent workspace
 • Agent can read, analyze, modify files
+
+*📤 File Download*
+Agent sends files automatically
+• Created files sent to you
+• Config files, scripts, reports
+• Max 10 files per task
+• Up to 50 MB per file
 
 *💬 AI Chat*
 Continuous conversation with AI
@@ -952,6 +962,31 @@ async def process_agent(update: Update, context: ContextTypes.DEFAULT_TYPE, task
                 for chunk in chunks[1:]:
                     plain_chunk = chunk.replace('*', '').replace('_', '').replace('`', "'")
                     await update.message.reply_text(plain_chunk)
+        
+        # Check for recently created files and send them
+        recent_files = CopilotCLI.get_workspace_files(user_id, max_age_seconds=120)
+        if recent_files:
+            await update.message.reply_text(
+                f"📎 *Files Created* ({len(recent_files)}):",
+                parse_mode='Markdown'
+            )
+            
+            for file_info in recent_files[:10]:  # Limit to 10 files
+                try:
+                    file_size_kb = file_info['size'] / 1024
+                    caption = f"📄 {file_info['name']}\n💾 Size: {file_size_kb:.1f} KB"
+                    
+                    with open(file_info['path'], 'rb') as f:
+                        await update.message.reply_document(
+                            document=f,
+                            filename=file_info['name'],
+                            caption=caption
+                        )
+                except Exception as e:
+                    logger.error(f"Error sending file {file_info['name']}: {e}")
+                    await update.message.reply_text(
+                        f"❌ Could not send file: {file_info['name']}"
+                    )
                 
     except Exception as e:
         logger.error(f"Agent error: {e}")

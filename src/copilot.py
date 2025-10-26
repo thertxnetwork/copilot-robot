@@ -220,6 +220,39 @@ class CopilotCLI:
         return result
     
     @staticmethod
+    def get_workspace_files(user_id: int, max_age_seconds: int = 60) -> list:
+        """Get recently created/modified files in user's workspace"""
+        workspace = f"/tmp/copilot_agent_{user_id}"
+        if not os.path.exists(workspace):
+            return []
+        
+        import time
+        current_time = time.time()
+        recent_files = []
+        
+        try:
+            for root, dirs, files in os.walk(workspace):
+                for filename in files:
+                    filepath = os.path.join(root, filename)
+                    # Check if file was modified recently
+                    mtime = os.path.getmtime(filepath)
+                    if current_time - mtime <= max_age_seconds:
+                        # Get file size
+                        size = os.path.getsize(filepath)
+                        # Only include files under 50MB (Telegram limit)
+                        if size < 50 * 1024 * 1024:
+                            recent_files.append({
+                                'path': filepath,
+                                'name': filename,
+                                'size': size,
+                                'relative_path': os.path.relpath(filepath, workspace)
+                            })
+        except Exception as e:
+            logger.error(f"Error listing workspace files: {e}")
+        
+        return recent_files
+    
+    @staticmethod
     def clear_session(user_id: int):
         """Clear user's copilot session"""
         if user_id in CopilotCLI.sessions:
