@@ -20,6 +20,9 @@ class CopilotCLI:
     # Store user model preferences
     user_models = {}
     
+    # Store persistent shell sessions per user
+    shell_sessions = {}
+    
     # Available models
     MODELS = {
         'claude-sonnet-4.5': 'Claude Sonnet 4.5 (Default)',
@@ -297,20 +300,113 @@ class CopilotCLI:
             return f"Error: {result['error']}"
     
     @staticmethod
-    async def run_shell_command(command: str, timeout: int = 60) -> str:
-        """Execute a shell command on the VPS"""
-        result = await CopilotCLI.execute_command(command, timeout=timeout)
-        
-        output = result['output'].strip()
-        error = result['error'].strip()
-        
-        response = ""
-        if output:
-            response += f"Output:\n{output}\n"
-        if error:
-            response += f"Error:\n{error}\n"
-        if not output and not error:
-            response = "Command executed successfully (no output)"
+    async def get_shell_session(user_id: int):
+        """Get or create persistent shell session for user"""
+        if user_id not in CopilotCLI.shell_sessions:
+            # Create new persistent shell session
+            process = await asyncio.create_subprocess_shell(
+                '/bin/bash',
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                shell=True
+            )
+            CopilotCLI.shell_sessions[user_id] = {
+                'process': process,
+                'cwd': '/root/copilot-telegram-bot'  # Default directory
+            }
+        return CopilotCLI.shell_sessions[user_id]
+    
+    @staticmethod
+    async def run_shell_command(command: str, user_id: int = None, timeout: int = 60) -> str:
+        """Execute a shell command in persistent session"""
+        if user_id is None:
+            # Fallback to single command execution
+            result = await CopilotCLI.execute_command(command, timeout=timeout)
+            output = result['output'].strip()
+            error = result['error'].strip()
             
-        response += f"\nReturn code: {result['returncode']}"
-        return response
+            response = ""
+            if output:
+                response += f"Output:\n{output}\n"
+            if error:
+                response += f"Error:\n{error}\n"
+            if not output and not error:
+                response = "Command executed successfully (no output)"
+                
+            response += f"\nReturn code: {result['returncode']}"
+            return response
+        
+        # Use persistent shell session
+        try:
+            session = await CopilotCLI.get_shell_session(user_id)
+            process = session['process']
+            
+            # Prepare command with pwd tracking
+            full_command = f"{command}\necho '__EXIT_CODE__:'$?\necho '__PWD__:'$(pwd)\n"
+            
+            # Send command
+            process.stdin.write(full_command.encode())
+            await process.stdin.drain()
+            
+            # Read output with timeout
+            output_lines = []
+            exit_code = 0
+            new_cwd = session['cwd']
+            
+            try:
+                async def read_output():
+                    nonlocal exit_code, new_cwd
+                    while True:
+                        line = await process.stdout.readline()
+                        if not line:
+                            break
+                        decoded = line.decode('utf-8', errors='ignore').rstrip()
+                        
+                        if decoded.startswith('__EXIT_CODE__:'):
+                            exit_code = int(decoded.split(':')[1])
+                        elif decoded.startswith('__PWD__:'):
+                            new_cwd = decoded.split(':', 1)[1]
+                            break
+                        else:
+                            output_lines.append(decoded)
+                
+                await asyncio.wait_for(read_output(), timeout=timeout)
+                
+            except asyncio.TimeoutError:
+                return f"Command timed out after {timeout} seconds"
+            
+            # Update session directory
+            session['cwd'] = new_cwd
+            
+            # Format response
+            output = '\n'.join(output_lines)
+            
+            response = ""
+            if output:
+                response += f"Output:\n{output}\n"
+            else:
+                response = "Command executed successfully (no output)"
+            
+            response += f"\nReturn code: {exit_code}"
+            response += f"\nCurrent directory: {new_cwd}"
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Shell session error: {e}")
+            # Reset session on error
+            if user_id in CopilotCLI.shell_sessions:
+                del CopilotCLI.shell_sessions[user_id]
+            return f"Error: {str(e)}"
+    
+    @staticmethod
+    def clear_shell_session(user_id: int):
+        """Clear user's shell session"""
+        if user_id in CopilotCLI.shell_sessions:
+            session = CopilotCLI.shell_sessions[user_id]
+            try:
+                session['process'].kill()
+            except:
+                pass
+            del CopilotCLI.shell_sessions[user_id]

@@ -60,9 +60,10 @@ def get_main_menu():
         ],
         [
             InlineKeyboardButton("🔄 Clear Chat", callback_data="clear_chat"),
-            InlineKeyboardButton("⚙️ Settings", callback_data="settings")
+            InlineKeyboardButton("🔄 Reset Shell", callback_data="clear_shell")
         ],
         [
+            InlineKeyboardButton("⚙️ Settings", callback_data="settings"),
             InlineKeyboardButton("❓ Help", callback_data="help")
         ]
     ]
@@ -189,6 +190,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await clear_session(query, context)
         elif query.data == "clear_chat":
             await clear_chat_session(query, context)
+        elif query.data == "clear_shell":
+            await clear_shell_session(query, context)
         elif query.data == "settings":
             await show_settings(query)
         elif query.data == "toggle_approve":
@@ -621,6 +624,22 @@ async def clear_chat_session(query, context):
         reply_markup=get_back_menu()
     )
 
+
+async def clear_shell_session(query, context):
+    """Clear shell session"""
+    user_id = query.from_user.id
+    CopilotCLI.clear_shell_session(user_id)
+    
+    await query.message.edit_text(
+        "\n"
+        "   🔄 *SHELL RESET*         \n"
+        "\n\n"
+        "✅ Shell session has been reset\n\n"
+        "_Directory reset to default_\n"
+        "_Working directory: /root/copilot-telegram-bot_",
+        parse_mode='Markdown',
+        reply_markup=get_back_menu()
+    )
 
 
 async def suggest(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1203,6 +1222,8 @@ async def process_chat(update: Update, context: ContextTypes.DEFAULT_TYPE, messa
 
 async def process_run(update: Update, context: ContextTypes.DEFAULT_TYPE, command: str):
     """Process run command with live updates and safety checks"""
+    user_id = update.effective_user.id
+    
     # Security check
     dangerous_keywords = ['rm -rf', 'mkfs', 'dd if=', '> /dev/', 'format', 'shutdown', 'reboot', 'init 0', 'init 6', 'poweroff', 'halt']
     if any(keyword in command.lower() for keyword in dangerous_keywords):
@@ -1228,7 +1249,7 @@ async def process_run(update: Update, context: ContextTypes.DEFAULT_TYPE, comman
     )
     
     try:
-        response = await CopilotCLI.run_shell_command(command, timeout=60)
+        response = await CopilotCLI.run_shell_command(command, user_id=user_id, timeout=60)
         
         result_text = "\n"
         result_text += "   ✅ *EXECUTION COMPLETE*  \n"
