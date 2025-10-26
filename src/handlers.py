@@ -324,7 +324,7 @@ Download any file from the server by providing the full path.
 • `/root/myfile.zip`
 • `/tmp/backup.tar.gz`
 
-*Maximum file size:* 50 MB
+*Maximum file size:* 500 MB
 
 *Send the file path:*"""
     await query.message.edit_text(text, parse_mode='Markdown', reply_markup=get_back_menu())
@@ -358,7 +358,7 @@ Send files to Agent Mode
 Download any file from server
 • Use the Download File button
 • Provide full file path
-• Max 50 MB per file
+• Max 500 MB per file
 • Progress shown during upload
 • Example: /etc/nginx/nginx.conf
 
@@ -1249,8 +1249,8 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE, f
         file_size = os.path.getsize(file_path)
         file_name = os.path.basename(file_path)
         
-        # Check file size (Telegram limit is 50MB for bots)
-        max_size = 50 * 1024 * 1024  # 50 MB
+        # Check file size (500MB limit)
+        max_size = 500 * 1024 * 1024  # 500 MB
         if file_size > max_size:
             await status_msg.edit_text(
                 "\n"
@@ -1258,7 +1258,7 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE, f
                 "\n\n"
                 f"*Path:* `{file_path}`\n"
                 f"*Size:* {file_size / 1024 / 1024:.2f} MB\n\n"
-                "*Maximum allowed:* 50 MB\n\n"
+                "*Maximum allowed:* 500 MB\n\n"
                 "_Please compress or split the file._",
                 parse_mode='Markdown',
                 reply_markup=get_back_menu()
