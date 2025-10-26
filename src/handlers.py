@@ -228,11 +228,11 @@ AI assistant that can execute complex multi-step tasks. It can create files, run
 • "Create a Python web scraper"
 • "Set up a Docker container for Node.js"
 • "Analyze logs and fix errors"
+• "Create config.txt and send me the file"
+• "Zip /var/log and send me the archive"
 
-📎 *You can also send files!*
-Upload documents, images, or code files for the agent to process.
-
-📤 *Files created by the agent will be automatically sent to you!*
+📎 *You can upload files!*
+📤 *You can request any file!*
 
 *Send your task or file:*"""
     await query.message.edit_text(text, parse_mode='Markdown', reply_markup=get_back_menu())
@@ -318,24 +318,26 @@ Complex multi-step tasks with AI
 • Can create files and scripts
 • Executes multiple commands
 • Maintains session context
-• *Accepts file uploads* 📎
-• *Sends created files back* 📤
+• *Upload files* 📎
+• *Request any file* 📤
 • Just keep messaging to continue
 • Use "Clear Session" for fresh start
 
 *📎 File Upload*
-Send files in Agent Mode
+Send files to Agent Mode
 • Documents, images, code files
 • Max size: 20 MB
 • Files saved to agent workspace
-• Agent can read, analyze, modify files
+• Agent can read, analyze, modify
 
 *📤 File Download*
-Agent sends files automatically
-• Created files sent to you
-• Config files, scripts, reports
-• Max 10 files per task
-• Up to 50 MB per file
+Request files on-demand
+• "Send me config.txt"
+• "Zip /var/log and send me"
+• "Send me the script you created"
+• "Download /etc/nginx/nginx.conf"
+• Works with ANY file on server
+• Max 50 MB per file
 
 *💬 AI Chat*
 Continuous conversation with AI
@@ -798,6 +800,56 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+async def send_requested_files(update: Update, user_id: int):
+    """Send files from workspace when user requests them"""
+    workspace = f"/tmp/copilot_agent_{user_id}"
+    
+    if not os.path.exists(workspace):
+        await update.message.reply_text("📂 No files in workspace")
+        return
+    
+    try:
+        # Get all files in workspace
+        files_to_send = []
+        for root, dirs, files in os.walk(workspace):
+            for filename in files:
+                filepath = os.path.join(root, filename)
+                size = os.path.getsize(filepath)
+                # Only send files under 50MB
+                if size < 50 * 1024 * 1024:
+                    files_to_send.append({
+                        'path': filepath,
+                        'name': filename,
+                        'size': size
+                    })
+        
+        if not files_to_send:
+            await update.message.reply_text("📂 No files found to send")
+            return
+        
+        await update.message.reply_text(
+            f"📤 Sending {len(files_to_send)} file(s)..."
+        )
+        
+        for file_info in files_to_send[:20]:  # Limit to 20 files
+            try:
+                file_size_kb = file_info['size'] / 1024
+                caption = f"📄 {file_info['name']}\n💾 {file_size_kb:.1f} KB"
+                
+                with open(file_info['path'], 'rb') as f:
+                    await update.message.reply_document(
+                        document=f,
+                        filename=file_info['name'],
+                        caption=caption
+                    )
+            except Exception as e:
+                logger.error(f"Error sending file {file_info['name']}: {e}")
+                
+    except Exception as e:
+        logger.error(f"Error in send_requested_files: {e}")
+        await update.message.reply_text("❌ Error sending files")
+
+
 async def process_agent(update: Update, context: ContextTypes.DEFAULT_TYPE, task: str, continue_session: bool):
     """Process agent task with live streaming updates"""
     user_id = update.effective_user.id
@@ -963,30 +1015,9 @@ async def process_agent(update: Update, context: ContextTypes.DEFAULT_TYPE, task
                     plain_chunk = chunk.replace('*', '').replace('_', '').replace('`', "'")
                     await update.message.reply_text(plain_chunk)
         
-        # Check for recently created files and send them
-        recent_files = CopilotCLI.get_workspace_files(user_id, max_age_seconds=120)
-        if recent_files:
-            await update.message.reply_text(
-                f"📎 *Files Created* ({len(recent_files)}):",
-                parse_mode='Markdown'
-            )
-            
-            for file_info in recent_files[:10]:  # Limit to 10 files
-                try:
-                    file_size_kb = file_info['size'] / 1024
-                    caption = f"📄 {file_info['name']}\n💾 Size: {file_size_kb:.1f} KB"
-                    
-                    with open(file_info['path'], 'rb') as f:
-                        await update.message.reply_document(
-                            document=f,
-                            filename=file_info['name'],
-                            caption=caption
-                        )
-                except Exception as e:
-                    logger.error(f"Error sending file {file_info['name']}: {e}")
-                    await update.message.reply_text(
-                        f"❌ Could not send file: {file_info['name']}"
-                    )
+        # Check if user is asking for files to be sent
+        if any(keyword in task.lower() for keyword in ['send me', 'send the', 'send file', 'zip and send', 'download']):
+            await send_requested_files(update, user_id)
                 
     except Exception as e:
         logger.error(f"Agent error: {e}")
