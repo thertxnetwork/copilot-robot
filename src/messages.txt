@@ -1,0 +1,7 @@
+show_main_menu: "🤖 *COPILOT AI ASSISTANT*\n\nSelect:"
+show_agent_prompt: "🤖 *AGENT MODE*\n\nSend task:"
+show_suggest_prompt: "💡 *SUGGEST*\n\nDescribe what you need:"
+show_explain_prompt: "📚 *EXPLAIN*\n\nSend command:"
+show_run_prompt: "⚙️ *RUN*\n\nSend command:"
+show_settings: "⚙️ *SETTINGS*\n\n*Auto-Approve:* {status}"
+show_help: "❓ *HELP*\n\n• Agent - Complex tasks\n• Suggest - Command ideas\n• Explain - Understand commands\n• Run - Execute on VPS\n• Status - System info"
