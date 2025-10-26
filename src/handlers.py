@@ -55,11 +55,14 @@ def get_main_menu():
             InlineKeyboardButton("📊 System Status", callback_data="status")
         ],
         [
-            InlineKeyboardButton("🔄 Clear Agent", callback_data="clear"),
-            InlineKeyboardButton("🔄 Clear Chat", callback_data="clear_chat")
+            InlineKeyboardButton("📥 Download File", callback_data="download"),
+            InlineKeyboardButton("🔄 Clear Agent", callback_data="clear")
         ],
         [
-            InlineKeyboardButton("⚙️ Settings", callback_data="settings"),
+            InlineKeyboardButton("🔄 Clear Chat", callback_data="clear_chat"),
+            InlineKeyboardButton("⚙️ Settings", callback_data="settings")
+        ],
+        [
             InlineKeyboardButton("❓ Help", callback_data="help")
         ]
     ]
@@ -125,6 +128,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 📚 *Explain* - Understand any command
 ⚙️ *Run* - Execute commands directly
 
+📥 *Download File* - Download files from server
 📊 *Status* - Monitor system resources
 🔄 *Clear Agent/Chat* - Reset sessions
 ⚙️ *Settings* - Configure bot behavior
@@ -163,6 +167,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await show_explain_prompt(query, context)
         elif query.data == "run":
             await show_run_prompt(query, context)
+        elif query.data == "download":
+            await show_download_prompt(query, context)
         elif query.data == "status":
             await show_status(query, context)
         elif query.data == "clear":
@@ -200,6 +206,7 @@ async def show_main_menu(query):
 📚 *Explain* - Understand any command
 ⚙️ *Run* - Execute commands directly
 
+📥 *Download File* - Download files from server
 📊 *Status* - Monitor system resources
 🔄 *Clear Agent/Chat* - Reset sessions
 ⚙️ *Settings* - Configure bot behavior
@@ -228,11 +235,11 @@ AI assistant that can execute complex multi-step tasks. It can create files, run
 • "Create a Python web scraper"
 • "Set up a Docker container for Node.js"
 • "Analyze logs and fix errors"
-• "Create config.txt and send me the file"
-• "Zip /var/log and send me the archive"
+• "Create a backup script"
+• "Install and configure nginx"
 
 📎 *You can upload files!*
-📤 *You can request any file!*
+💡 *Use Download File to get files from server*
 
 *Send your task or file:*"""
     await query.message.edit_text(text, parse_mode='Markdown', reply_markup=get_back_menu())
@@ -306,6 +313,24 @@ Execute commands directly on your server with real-time output. Dangerous comman
     context.user_data['waiting_for'] = 'run'
 
 
+async def show_download_prompt(query, context):
+    text = """📥 *DOWNLOAD FILE*
+
+Download any file from the server by providing the full path.
+
+*Examples:*
+• `/etc/nginx/nginx.conf`
+• `/var/log/syslog`
+• `/root/myfile.zip`
+• `/tmp/backup.tar.gz`
+
+*Maximum file size:* 50 MB
+
+*Send the file path:*"""
+    await query.message.edit_text(text, parse_mode='Markdown', reply_markup=get_back_menu())
+    context.user_data['waiting_for'] = 'download'
+
+
 async def show_help(query):
     """Show help"""
     text = """
@@ -319,7 +344,6 @@ Complex multi-step tasks with AI
 • Executes multiple commands
 • Maintains session context
 • *Upload files* 📎
-• *Request any file* 📤
 • Just keep messaging to continue
 • Use "Clear Session" for fresh start
 
@@ -330,14 +354,13 @@ Send files to Agent Mode
 • Files saved to agent workspace
 • Agent can read, analyze, modify
 
-*📤 File Download*
-Request files on-demand
-• "Send me config.txt"
-• "Zip /var/log and send me"
-• "Send me the script you created"
-• "Download /etc/nginx/nginx.conf"
-• Works with ANY file on server
+*📥 Download File*
+Download any file from server
+• Use the Download File button
+• Provide full file path
 • Max 50 MB per file
+• Progress shown during upload
+• Example: /etc/nginx/nginx.conf
 
 *💬 AI Chat*
 Continuous conversation with AI
@@ -695,6 +718,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await process_explain(update, context, text)
         elif waiting_for == 'run':
             await process_run(update, context, text)
+        elif waiting_for == 'download':
+            await process_download(update, context, text)
     except Exception as e:
         logger.error(f"Error in handle_message: {e}")
         error_text = str(e).replace('`', "'")
@@ -798,56 +823,6 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown',
             reply_markup=get_back_menu()
         )
-
-
-async def send_requested_files(update: Update, user_id: int):
-    """Send files from workspace when user requests them"""
-    workspace = f"/tmp/copilot_agent_{user_id}"
-    
-    if not os.path.exists(workspace):
-        await update.message.reply_text("📂 No files in workspace")
-        return
-    
-    try:
-        # Get all files in workspace
-        files_to_send = []
-        for root, dirs, files in os.walk(workspace):
-            for filename in files:
-                filepath = os.path.join(root, filename)
-                size = os.path.getsize(filepath)
-                # Only send files under 50MB
-                if size < 50 * 1024 * 1024:
-                    files_to_send.append({
-                        'path': filepath,
-                        'name': filename,
-                        'size': size
-                    })
-        
-        if not files_to_send:
-            await update.message.reply_text("📂 No files found to send")
-            return
-        
-        await update.message.reply_text(
-            f"📤 Sending {len(files_to_send)} file(s)..."
-        )
-        
-        for file_info in files_to_send[:20]:  # Limit to 20 files
-            try:
-                file_size_kb = file_info['size'] / 1024
-                caption = f"📄 {file_info['name']}\n💾 {file_size_kb:.1f} KB"
-                
-                with open(file_info['path'], 'rb') as f:
-                    await update.message.reply_document(
-                        document=f,
-                        filename=file_info['name'],
-                        caption=caption
-                    )
-            except Exception as e:
-                logger.error(f"Error sending file {file_info['name']}: {e}")
-                
-    except Exception as e:
-        logger.error(f"Error in send_requested_files: {e}")
-        await update.message.reply_text("❌ Error sending files")
 
 
 async def process_agent(update: Update, context: ContextTypes.DEFAULT_TYPE, task: str, continue_session: bool):
@@ -1224,6 +1199,127 @@ async def process_run(update: Update, context: ContextTypes.DEFAULT_TYPE, comman
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"Command: `{command}`\n\n"
             f"Error:\n```\n{error_text}\n```",
+            parse_mode='Markdown',
+            reply_markup=get_back_menu()
+        )
+
+
+async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE, file_path: str):
+    """Process file download with progress updates"""
+    file_path = file_path.strip()
+    
+    # Initial status message
+    status_msg = await update.message.reply_text(
+        "\n"
+        "   📥 *DOWNLOADING FILE*     \n"
+        "\n\n"
+        f"*Path:* `{file_path}`\n\n"
+        "⏳ *Status:* Checking file...",
+        parse_mode='Markdown'
+    )
+    
+    try:
+        # Check if file exists
+        if not os.path.exists(file_path):
+            await status_msg.edit_text(
+                "\n"
+                "   ❌ *FILE NOT FOUND*      \n"
+                "\n\n"
+                f"*Path:* `{file_path}`\n\n"
+                "The file does not exist on the server.",
+                parse_mode='Markdown',
+                reply_markup=get_back_menu()
+            )
+            return
+        
+        # Check if it's a file (not a directory)
+        if not os.path.isfile(file_path):
+            await status_msg.edit_text(
+                "\n"
+                "   ❌ *NOT A FILE*          \n"
+                "\n\n"
+                f"*Path:* `{file_path}`\n\n"
+                "The path is a directory, not a file.",
+                parse_mode='Markdown',
+                reply_markup=get_back_menu()
+            )
+            return
+        
+        # Get file info
+        file_size = os.path.getsize(file_path)
+        file_name = os.path.basename(file_path)
+        
+        # Check file size (Telegram limit is 50MB for bots)
+        max_size = 50 * 1024 * 1024  # 50 MB
+        if file_size > max_size:
+            await status_msg.edit_text(
+                "\n"
+                "   ❌ *FILE TOO LARGE*      \n"
+                "\n\n"
+                f"*Path:* `{file_path}`\n"
+                f"*Size:* {file_size / 1024 / 1024:.2f} MB\n\n"
+                "*Maximum allowed:* 50 MB\n\n"
+                "_Please compress or split the file._",
+                parse_mode='Markdown',
+                reply_markup=get_back_menu()
+            )
+            return
+        
+        # Update status - preparing to send
+        await status_msg.edit_text(
+            "\n"
+            "   📥 *DOWNLOADING FILE*     \n"
+            "\n\n"
+            f"*File:* `{file_name}`\n"
+            f"*Size:* {file_size / 1024:.2f} KB\n"
+            f"*Path:* `{file_path}`\n\n"
+            "⏳ *Status:* Preparing file...",
+            parse_mode='Markdown'
+        )
+        
+        # Send the file
+        with open(file_path, 'rb') as f:
+            # Update status - uploading
+            await status_msg.edit_text(
+                "\n"
+                "   📤 *UPLOADING*           \n"
+                "\n\n"
+                f"*File:* `{file_name}`\n"
+                f"*Size:* {file_size / 1024:.2f} KB\n\n"
+                "⏳ *Status:* Uploading to Telegram...",
+                parse_mode='Markdown'
+            )
+            
+            caption = f"📄 {file_name}\n💾 Size: {file_size / 1024:.2f} KB\n📂 Path: {file_path}"
+            
+            await update.message.reply_document(
+                document=f,
+                filename=file_name,
+                caption=caption
+            )
+        
+        # Update status - complete
+        await status_msg.edit_text(
+            "\n"
+            "   ✅ *DOWNLOAD COMPLETE*   \n"
+            "\n\n"
+            f"*File:* `{file_name}`\n"
+            f"*Size:* {file_size / 1024:.2f} KB\n"
+            f"*Path:* `{file_path}`\n\n"
+            "✅ File sent successfully!",
+            parse_mode='Markdown',
+            reply_markup=get_back_menu()
+        )
+        
+    except Exception as e:
+        logger.error(f"Download error: {e}")
+        error_text = str(e).replace('`', "'")
+        await status_msg.edit_text(
+            "\n"
+            "   ❌ *DOWNLOAD FAILED*     \n"
+            "\n\n"
+            f"*Path:* `{file_path}`\n\n"
+            f"*Error:* {error_text}",
             parse_mode='Markdown',
             reply_markup=get_back_menu()
         )
