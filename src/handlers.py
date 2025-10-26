@@ -781,8 +781,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=get_back_menu()
         )
     finally:
-        # Don't clear waiting_for if it's agent or chat (to allow continuous conversation)
-        if waiting_for not in ['agent', 'chat']:
+        # Don't clear waiting_for if it's agent, chat, or run (to allow continuous commands)
+        if waiting_for not in ['agent', 'chat', 'run']:
             context.user_data['waiting_for'] = None
 
 
@@ -1234,7 +1234,8 @@ async def process_run(update: Update, context: ContextTypes.DEFAULT_TYPE, comman
         result_text += "   ✅ *EXECUTION COMPLETE*  \n"
         result_text += "\n\n"
         result_text += f"*Command:* `{command}`\n\n"
-        result_text += f"```\n{response[:3800] if len(response) > 3800 else response}\n```"
+        result_text += f"```\n{response[:3800] if len(response) > 3800 else response}\n```\n\n"
+        result_text += "💡 _Send another command to continue_"
         
         await status_msg.edit_text(
             result_text,
