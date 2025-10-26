@@ -116,38 +116,45 @@ def format_command_block(command_info: str) -> str:
     return formatted
 
 
+def escape_markdown_chars(text: str) -> str:
+    """Escape special markdown characters that can break parsing"""
+    # Characters that need escaping: _ * [ ] ( ) ~ ` > # + - = | { } . !
+    # But preserve those in code blocks
+    
+    # Don't escape if already in code block
+    if text.startswith('```') or text.startswith('`'):
+        return text
+    
+    # Escape problematic characters
+    chars_to_escape = ['_', '*', '[', ']', '(', ')', '~', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    for char in chars_to_escape:
+        # Only escape if not already escaped
+        text = text.replace(char, '\\' + char)
+    
+    return text
+
+
 def format_for_telegram(response: str, truncate: int = 3500) -> str:
     """Format copilot response for Telegram with proper markdown"""
     
-    # Replace ✓ with emoji
-    response = response.replace('✓', '✅')
-    
-    # Handle bold **text** -> *text* for Telegram
-    response = re.sub(r'\*\*(.+?)\*\*', r'*\1*', response)
-    
-    # Handle code blocks properly
-    response = re.sub(r'```(\w+)?\n', r'```\n', response)
-    
-    # Extract and format command executions
-    # Pattern: $ command followed by ↪ output
-    command_pattern = r'\$ (.+?)(?:\n↪ (.+?))?(?=\n|$)'
-    
-    def format_command_match(match):
-        cmd = match.group(1)
-        output = match.group(2) if match.group(2) else None
+    try:
+        # Replace ✓ with emoji
+        response = response.replace('✓', '✅')
         
-        result = f"> `$ {cmd}`"
-        if output:
-            result += f"\n> _{output}_"
-        return result
-    
-    response = re.sub(command_pattern, format_command_match, response, flags=re.MULTILINE)
-    
-    # Truncate if too long but keep structure
-    if len(response) > truncate:
-        response = response[:truncate] + '\n\n..._[Response truncated]_'
-    
-    return response
+        # Handle bold **text** -> *text* for Telegram
+        response = re.sub(r'\*\*(.+?)\*\*', r'*\1*', response)
+        
+        # Handle code blocks properly
+        response = re.sub(r'```(\w+)?\n', r'```\n', response)
+        
+        # Truncate if too long but keep structure
+        if len(response) > truncate:
+            response = response[:truncate] + '\n\n...[Response truncated]'
+        
+        return response
+    except Exception as e:
+        # If any error, return plain text
+        return response.replace('✓', '✅')[:truncate]
 
 
 def create_copilot_result(task: str, response: str) -> str:

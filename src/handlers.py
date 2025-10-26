@@ -905,17 +905,23 @@ async def process_agent(update: Update, context: ContextTypes.DEFAULT_TYPE, task
         
         # Add content with proper markdown formatting
         if content:
-            formatted_content = format_for_telegram(content, truncate=1800)
-            result_text += f"{formatted_content}\n\n"
+            try:
+                formatted_content = format_for_telegram(content, truncate=1800)
+                result_text += f"{formatted_content}\n\n"
+            except Exception as e:
+                logger.error(f"Error formatting content: {e}")
+                # Use plain text if formatting fails
+                plain_content = content[:1800].replace('`', "'").replace('*', '').replace('_', '')
+                result_text += f"{plain_content}\n\n"
         
         # Add stats
         if stats:
             duration_match = re.search(r'Total duration \(wall\): ([\d.]+s)', stats)
             if duration_match:
-                result_text += f"⏱️ Completed in: `{duration_match.group(1)}`"
+                result_text += f"⏱️ Completed in: {duration_match.group(1)}\n"
         
         # Add session continuation hint
-        result_text += "\n\n💬 _Just send another message to continue this session_"
+        result_text += "\n💬 Just send another message to continue this session"
         
         # Send final result
         try:
@@ -925,27 +931,37 @@ async def process_agent(update: Update, context: ContextTypes.DEFAULT_TYPE, task
                 reply_markup=get_back_menu()
             )
         except Exception as e:
-            # If message too long, split it
-            logger.warning(f"Message too long, splitting: {e}")
-            chunks = split_response(result_text, max_length=3500)
-            await status_msg.edit_text(
-                chunks[0],
-                parse_mode='Markdown',
-                reply_markup=get_back_menu()
-            )
-            for chunk in chunks[1:]:
-                await update.message.reply_text(chunk, parse_mode='Markdown')
+            # If markdown parsing fails, try without parse_mode
+            logger.warning(f"Markdown parse error: {e}")
+            try:
+                # Remove all markdown formatting
+                plain_text = result_text.replace('*', '').replace('_', '').replace('`', "'")
+                await status_msg.edit_text(
+                    plain_text,
+                    reply_markup=get_back_menu()
+                )
+            except Exception as e2:
+                # If still fails, split it
+                logger.warning(f"Message too long, splitting: {e2}")
+                chunks = split_response(result_text, max_length=3500)
+                plain_chunk = chunks[0].replace('*', '').replace('_', '').replace('`', "'")
+                await status_msg.edit_text(
+                    plain_chunk,
+                    reply_markup=get_back_menu()
+                )
+                for chunk in chunks[1:]:
+                    plain_chunk = chunk.replace('*', '').replace('_', '').replace('`', "'")
+                    await update.message.reply_text(plain_chunk)
                 
     except Exception as e:
         logger.error(f"Agent error: {e}")
-        error_text = str(e).replace('`', "'")  # Replace backticks to avoid breaking code block
+        error_text = str(e).replace('`', "'").replace('*', '').replace('_', '')
         await status_msg.edit_text(
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             "│   ❌ TASK FAILED         │\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
             f"Task: {task}\n\n"
-            f"Error:\n```\n{error_text}\n```",
-            parse_mode='Markdown',
+            f"Error:\n{error_text}",
             reply_markup=get_back_menu()
         )
 
@@ -1057,11 +1073,20 @@ async def process_chat(update: Update, context: ContextTypes.DEFAULT_TYPE, messa
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await status_msg.edit_text(
-            result_text,
-            parse_mode='Markdown',
-            reply_markup=reply_markup
-        )
+        try:
+            await status_msg.edit_text(
+                result_text,
+                parse_mode='Markdown',
+                reply_markup=reply_markup
+            )
+        except Exception as e:
+            # If markdown fails, send as plain text
+            logger.warning(f"Markdown error in chat: {e}")
+            plain_text = result_text.replace('*', '').replace('_', '').replace('`', "'")
+            await status_msg.edit_text(
+                plain_text,
+                reply_markup=reply_markup
+            )
         
         # Keep chat session active
         if not continue_session:
@@ -1071,8 +1096,7 @@ async def process_chat(update: Update, context: ContextTypes.DEFAULT_TYPE, messa
         logger.error(f"Chat error: {e}")
         error_text = str(e).replace('`', "'")
         await status_msg.edit_text(
-            f"❌ *Error*\n\n```\n{error_text}\n```",
-            parse_mode='Markdown',
+            f"❌ Error\n\n{error_text}",
             reply_markup=get_back_menu()
         )
 
