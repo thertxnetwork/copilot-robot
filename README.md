@@ -1,84 +1,218 @@
-# GitHub Copilot CLI Telegram Bot
+# 🤖 GitHub Copilot CLI Telegram Bot
 
-Control GitHub Copilot CLI and execute commands on your VPS from Telegram with AI Agent Mode!
+A powerful Telegram bot that brings GitHub Copilot CLI to your fingertips! Execute AI-powered tasks, have intelligent conversations, and manage your VPS—all from Telegram.
 
-## Features
+## ✨ Features
 
 - 🤖 **AI Agent Mode** - Multi-step task automation with session persistence
-- 💡 Get command suggestions from GitHub Copilot
-- 📚 Explain shell commands
-- ⚙️ Execute shell commands remotely on your VPS
-- 📊 Check system status
-- 🎯 Inline keyboard menu for easy navigation
-- 🔒 User authorization support
+- 💬 **AI Chat** - Continuous conversation with context memory
+- 💡 **Command Suggestions** - Get smart command recommendations
+- 📚 **Command Explanations** - Understand any shell command
+- ⚙️ **Remote Execution** - Run commands safely on your VPS
+- 📎 **File Upload Support** - Process files in Agent Mode (max 20MB)
+- 🧠 **Model Switching** - Choose between Claude Sonnet 4.5, Claude Sonnet 4, Claude Haiku 4.5, or GPT-5
+- 📊 **System Monitoring** - Real-time VPS resource monitoring
+- 🎯 **Intuitive UI** - Beautiful inline keyboard menu
+- 🔒 **Security** - User authorization and dangerous command blocking
+- ⚙️ **Customizable** - Auto-approve settings and model preferences
 
-## Commands
+## 🎮 Usage
 
-### Agent Mode (NEW!)
-- `/agent <task>` - Start AI agent for complex multi-step tasks
-- `/agentc <task>` - Continue previous agent session
-- `/clear` - Clear agent session and start fresh
+Simply send `/start` to the bot and use the interactive menu! All features are accessible through beautifully designed buttons.
 
-### Regular Commands
-- `/start` - Show menu and get your user ID
-- `/help` - Show help message
-- `/suggest <query>` - Get command suggestions
-- `/explain <command>` - Explain a command
-- `/run <command>` - Execute command on VPS
-- `/status` - Check system status
+### 🤖 Agent Mode
+Execute complex, multi-step tasks with AI:
+- Create scripts and files
+- Analyze and modify code
+- Set up systems and services
+- Process uploaded files
+- Maintains conversation context
 
-## Agent Mode Examples
-
-The agent can perform complex, multi-step tasks:
-
-```bash
-/agent analyze disk usage and create cleanup script
-/agent find all log files older than 30 days and compress them
-/agent create a monitoring script for CPU and memory
-/agent setup a backup system for /var/www
+**Examples:**
+```
+"Create a Python web scraper for news articles"
+"Analyze this log file and fix the errors" (+ upload file)
+"Set up a Docker container for Node.js app"
+"Create a monitoring script for CPU and memory"
 ```
 
-## Quick Setup
+### 💬 AI Chat
+Have natural conversations with AI:
+- Ask technical questions
+- Get explanations and tutorials
+- Discuss programming concepts
+- Conversation history is remembered
+- No command execution (safe mode)
 
+**Examples:**
+```
+"Explain how Docker networking works"
+"What's the difference between async and sync in Python?"
+"How do I optimize MySQL queries?"
+```
+
+### 📎 File Upload
+Upload files directly in Agent Mode:
+- Drag and drop files to bot
+- Supports documents, images, code, logs
+- Max 20 MB per file
+- Files saved to agent workspace
+- Tell the agent what to do with the file
+
+### ⚙️ Other Features
+- **Command Suggestions** - Describe what you want, get the command
+- **Command Explanations** - Paste any command for detailed breakdown
+- **Run Command** - Execute with real-time output
+- **System Status** - Monitor CPU, RAM, disk, uptime
+- **Settings** - Auto-approve, model selection
+
+## 🚀 Installation
+
+### Prerequisites
+- Python 3.8+
+- GitHub Copilot CLI (`npm install -g @githubnext/github-copilot-cli`)
+- Telegram Bot Token (from [@BotFather](https://t.me/botfather))
+
+### Setup
+
+1. **Clone the repository:**
 ```bash
-cd /root/copilot-telegram-bot
+git clone https://github.com/thertxnetwork/copilot-robot.git
+cd copilot-robot
+```
 
-# Install dependencies (already done)
+2. **Create virtual environment:**
+```bash
 python3 -m venv venv
-venv/bin/pip install -r requirements.txt
-
-# Run as service
-sudo systemctl start copilot-bot
-sudo systemctl status copilot-bot
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
-## Service Management
+3. **Install dependencies:**
+```bash
+pip install -r requirements.txt
+```
+
+4. **Configure environment:**
+```bash
+cp .env.example .env
+nano .env  # Edit with your tokens
+```
+
+Required variables:
+```env
+BOT_TOKEN=your_telegram_bot_token
+GITHUB_TOKEN=your_github_token  # Optional
+ALLOWED_USERS=123456789  # Comma-separated user IDs, empty = allow all
+```
+
+5. **Run the bot:**
+```bash
+python main.py
+```
+
+### 🐧 Running as System Service (Linux)
+
+Create service file `/etc/systemd/system/copilot-bot.service`:
+```ini
+[Unit]
+Description=GitHub Copilot Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/copilot-robot
+Environment="PATH=/root/copilot-robot/venv/bin"
+ExecStart=/root/copilot-robot/venv/bin/python /root/copilot-robot/main.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable copilot-bot
+sudo systemctl start copilot-bot
+```
+
+## 📋 Service Management
 
 ```bash
-sudo systemctl status copilot-bot   # Check status
-sudo systemctl restart copilot-bot  # Restart bot
-sudo systemctl stop copilot-bot     # Stop bot
-sudo journalctl -u copilot-bot -f   # View live logs
+# Check status
+sudo systemctl status copilot-bot
+
+# Restart bot
+sudo systemctl restart copilot-bot
+
+# Stop bot
+sudo systemctl stop copilot-bot
+
+# View logs
+sudo journalctl -u copilot-bot -f
 ```
 
-## Security
+## 🔒 Security
 
-⚠️ The bot is restricted to user ID: `7557962281`
+- **User Authorization**: Restrict access to specific Telegram user IDs
+- **Dangerous Command Blocking**: Automatically blocks destructive commands (rm -rf, format, etc.)
+- **File Size Limits**: Maximum 20MB uploads
+- **Isolated Workspaces**: Each user gets their own workspace
+- **No Secrets in Code**: All sensitive data in environment variables
 
-To add more users, edit `.env`:
+Configure authorized users in `.env`:
+```env
+ALLOWED_USERS=123456789,987654321
+# Leave empty to allow all users (not recommended for production)
 ```
-ALLOWED_USERS=7557962281,1234567890
+
+## 🧠 AI Models
+
+Choose from multiple AI models in Settings:
+
+| Model | Description | Use Case |
+|-------|-------------|----------|
+| **Claude Sonnet 4.5** | Most capable (Default) | Complex tasks, analysis |
+| **Claude Sonnet 4** | Balanced performance | General purpose |
+| **Claude Haiku 4.5** | Fast and efficient | Quick responses |
+| **GPT-5** | OpenAI's latest | Alternative option |
+
+## 📂 Project Structure
+
+```
+copilot-robot/
+├── main.py                 # Entry point
+├── config/
+│   └── settings.py        # Configuration
+├── src/
+│   ├── bot.py            # Bot initialization
+│   ├── handlers.py       # Message & button handlers
+│   ├── copilot.py        # Copilot CLI interface
+│   └── formatter.py      # Response formatting
+├── requirements.txt       # Python dependencies
+├── .env                  # Environment variables (create from .env.example)
+└── README.md             # This file
 ```
 
-## How It Works
+## 🤝 Contributing
 
-**Agent Mode:**
-- Creates isolated workspace per user
-- Supports session continuity with `--continue`
-- Can create files, run commands, and perform multi-step tasks
-- Sessions persist until cleared with `/clear`
+Contributions are welcome! Please feel free to submit a Pull Request.
 
-**Regular Mode:**
-- Single-shot command suggestions and explanations
-- Direct command execution
-- System monitoring
+## 📄 License
+
+MIT License - feel free to use this project for personal or commercial purposes.
+
+## 🙏 Credits
+
+- Built with [python-telegram-bot](https://github.com/python-telegram-bot/python-telegram-bot)
+- Powered by [GitHub Copilot CLI](https://github.com/github/gh-copilot)
+
+## ⚠️ Disclaimer
+
+This bot executes commands on your server. Use with caution and only grant access to trusted users. Always review commands before execution in production environments.
+
+---
+
+Made with ❤️ by RTX Network
