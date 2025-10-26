@@ -1016,8 +1016,9 @@ async def process_agent(update: Update, context: ContextTypes.DEFAULT_TYPE, task
                     await update.message.reply_text(plain_chunk)
         
         # Check if user is asking for files to be sent
-        if any(keyword in task.lower() for keyword in ['send me', 'send the', 'send file', 'zip and send', 'download']):
-            await send_requested_files(update, user_id)
+        # Commenting out auto file sending - let agent handle it explicitly
+        # if any(keyword in task.lower() for keyword in ['send me', 'send the', 'send file', 'zip and send', 'download']):
+        #     await send_requested_files(update, user_id)
                 
     except Exception as e:
         logger.error(f"Agent error: {e}")
