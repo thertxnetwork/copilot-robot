@@ -55,7 +55,7 @@ def get_main_menu():
             InlineKeyboardButton("📊 System Status", callback_data="status")
         ],
         [
-            InlineKeyboardButton("📥 Download File", callback_data="download"),
+            InlineKeyboardButton("📁 File I/O", callback_data="fileio"),
             InlineKeyboardButton("🔄 Clear Agent", callback_data="clear")
         ],
         [
@@ -88,6 +88,16 @@ def get_settings_menu(user_id: int):
 def get_back_menu():
     """Get back to menu keyboard"""
     keyboard = [[InlineKeyboardButton("🏠 Back to Menu", callback_data="menu")]]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_fileio_menu():
+    """Get File I/O menu keyboard"""
+    keyboard = [
+        [InlineKeyboardButton("📤 Upload File", callback_data="upload")],
+        [InlineKeyboardButton("📥 Download File", callback_data="download")],
+        [InlineKeyboardButton("🏠 Back to Menu", callback_data="menu")]
+    ]
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -128,7 +138,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 📚 *Explain* - Understand any command
 ⚙️ *Run* - Execute commands directly
 
-📥 *Download File* - Download files from server
+📁 *File I/O* - Upload/Download files
 📊 *Status* - Monitor system resources
 🔄 *Clear Agent/Chat* - Reset sessions
 ⚙️ *Settings* - Configure bot behavior
@@ -167,6 +177,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await show_explain_prompt(query, context)
         elif query.data == "run":
             await show_run_prompt(query, context)
+        elif query.data == "fileio":
+            await show_fileio_menu(query, context)
+        elif query.data == "upload":
+            await show_upload_prompt(query, context)
         elif query.data == "download":
             await show_download_prompt(query, context)
         elif query.data == "status":
@@ -206,7 +220,7 @@ async def show_main_menu(query):
 📚 *Explain* - Understand any command
 ⚙️ *Run* - Execute commands directly
 
-📥 *Download File* - Download files from server
+📁 *File I/O* - Upload/Download files
 📊 *Status* - Monitor system resources
 🔄 *Clear Agent/Chat* - Reset sessions
 ⚙️ *Settings* - Configure bot behavior
@@ -313,6 +327,48 @@ Execute commands directly on your server with real-time output. Dangerous comman
     context.user_data['waiting_for'] = 'run'
 
 
+async def show_fileio_menu(query, context):
+    text = """📁 *FILE I/O*
+
+Manage file uploads and downloads.
+
+*📤 Upload File*
+Upload files from your device to the server
+• Send any file type
+• Max size: 500 MB
+• Choose destination path
+
+*📥 Download File*
+Download files from the server to your device
+• Any file on the server
+• Max size: 500 MB
+• Live progress updates
+
+*Select an option:*"""
+    await query.message.edit_text(text, parse_mode='Markdown', reply_markup=get_fileio_menu())
+
+
+async def show_upload_prompt(query, context):
+    text = """📤 *UPLOAD FILE*
+
+Upload a file from your device to the server.
+
+*Instructions:*
+1. Send the file you want to upload
+2. Provide the destination path on server
+
+*Examples of destination paths:*
+• `/root/myfile.txt`
+• `/var/www/html/index.html`
+• `/tmp/backup.zip`
+
+*Maximum file size:* 500 MB
+
+*Send your file now:*"""
+    await query.message.edit_text(text, parse_mode='Markdown', reply_markup=get_back_menu())
+    context.user_data['waiting_for'] = 'upload'
+
+
 async def show_download_prompt(query, context):
     text = """📥 *DOWNLOAD FILE*
 
@@ -347,20 +403,14 @@ Complex multi-step tasks with AI
 • Just keep messaging to continue
 • Use "Clear Session" for fresh start
 
-*📎 File Upload*
-Send files to Agent Mode
-• Documents, images, code files
-• Max size: 20 MB
-• Files saved to agent workspace
-• Agent can read, analyze, modify
-
-*📥 Download File*
-Download any file from server
-• Use the Download File button
-• Provide full file path
-• Max 500 MB per file
-• Progress shown during upload
-• Example: /etc/nginx/nginx.conf
+*📁 File I/O*
+Upload and Download files
+• *Upload:* Send files to any location
+• *Download:* Get files from server
+• Max size: 500 MB per file
+• Live progress updates
+• Supports all file types
+• Easy path selection
 
 *💬 AI Chat*
 Continuous conversation with AI
@@ -720,6 +770,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await process_run(update, context, text)
         elif waiting_for == 'download':
             await process_download(update, context, text)
+        elif waiting_for == 'upload_path':
+            await process_upload_path(update, context, text)
     except Exception as e:
         logger.error(f"Error in handle_message: {e}")
         error_text = str(e).replace('`', "'")
@@ -744,12 +796,17 @@ async def handle_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     waiting_for = context.user_data.get('waiting_for')
     
+    # Handle upload mode
+    if waiting_for == 'upload':
+        await process_upload_file(update, context)
+        return
+    
     # Only accept files in agent mode or if user has active session
     if waiting_for != 'agent' and user_id not in CopilotCLI.sessions:
         await update.message.reply_text(
             "📎 *File Upload*\n\n"
-            "Files can only be processed in *Agent Mode*.\n\n"
-            "Please select 🤖 Agent Mode from the menu first.",
+            "Files can only be processed in *Agent Mode* or *Upload Mode*.\n\n"
+            "Please select an option from the menu first.",
             parse_mode='Markdown',
             reply_markup=get_main_menu()
         )
@@ -1319,6 +1376,212 @@ async def process_download(update: Update, context: ContextTypes.DEFAULT_TYPE, f
             "   ❌ *DOWNLOAD FAILED*     \n"
             "\n\n"
             f"*Path:* `{file_path}`\n\n"
+            f"*Error:* {error_text}",
+            parse_mode='Markdown',
+            reply_markup=get_back_menu()
+        )
+
+
+async def process_upload_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle file upload - step 1: receive file"""
+    user_id = update.effective_user.id
+    
+    status_msg = await update.message.reply_text(
+        "📤 *Uploading File...*\n\n⏳ *Status:* Receiving file...",
+        parse_mode='Markdown'
+    )
+    
+    try:
+        # Get file object
+        if update.message.document:
+            file = await update.message.document.get_file()
+            file_name = update.message.document.file_name
+            file_size = update.message.document.file_size
+        elif update.message.photo:
+            file = await update.message.photo[-1].get_file()
+            file_name = f"photo_{file.file_id}.jpg"
+            file_size = update.message.photo[-1].file_size
+        elif update.message.video:
+            file = await update.message.video.get_file()
+            file_name = update.message.video.file_name or f"video_{file.file_id}.mp4"
+            file_size = update.message.video.file_size
+        elif update.message.audio:
+            file = await update.message.audio.get_file()
+            file_name = update.message.audio.file_name or f"audio_{file.file_id}.mp3"
+            file_size = update.message.audio.file_size
+        else:
+            await status_msg.edit_text(
+                "❌ Unsupported file type",
+                parse_mode='Markdown',
+                reply_markup=get_back_menu()
+            )
+            return
+        
+        # Check file size (limit to 500MB)
+        max_size = 500 * 1024 * 1024  # 500 MB
+        if file_size and file_size > max_size:
+            await status_msg.edit_text(
+                "❌ *File Too Large*\n\n"
+                f"File size: {file_size / 1024 / 1024:.2f} MB\n"
+                "Maximum allowed: 500 MB",
+                parse_mode='Markdown',
+                reply_markup=get_back_menu()
+            )
+            return
+        
+        # Download to temp location
+        temp_dir = f"/tmp/upload_{user_id}"
+        os.makedirs(temp_dir, exist_ok=True)
+        temp_path = os.path.join(temp_dir, file_name)
+        
+        await status_msg.edit_text(
+            "📤 *Uploading File...*\n\n⏳ *Status:* Downloading from Telegram...",
+            parse_mode='Markdown'
+        )
+        
+        await file.download_to_drive(temp_path)
+        
+        # Store file info in context
+        context.user_data['upload_temp_path'] = temp_path
+        context.user_data['upload_file_name'] = file_name
+        context.user_data['upload_file_size'] = file_size
+        
+        # Ask for destination path
+        await status_msg.edit_text(
+            f"📤 *File Received*\n\n"
+            f"*File:* `{file_name}`\n"
+            f"*Size:* {file_size / 1024:.2f} KB\n\n"
+            "✅ File received successfully!\n\n"
+            "*Now send the destination path:*\n\n"
+            "*Examples:*\n"
+            "• `/root/{file_name}`\n"
+            "• `/var/www/html/{file_name}`\n"
+            "• `/tmp/{file_name}`",
+            parse_mode='Markdown',
+            reply_markup=get_back_menu()
+        )
+        
+        # Set state to wait for path
+        context.user_data['waiting_for'] = 'upload_path'
+        
+    except Exception as e:
+        logger.error(f"Error receiving upload file: {e}")
+        error_text = str(e).replace('`', "'")
+        await status_msg.edit_text(
+            f"❌ *Upload Failed*\n\n```\n{error_text}\n```",
+            parse_mode='Markdown',
+            reply_markup=get_back_menu()
+        )
+
+
+async def process_upload_path(update: Update, context: ContextTypes.DEFAULT_TYPE, dest_path: str):
+    """Handle file upload - step 2: save to destination"""
+    user_id = update.effective_user.id
+    dest_path = dest_path.strip()
+    
+    # Get stored file info
+    temp_path = context.user_data.get('upload_temp_path')
+    file_name = context.user_data.get('upload_file_name')
+    file_size = context.user_data.get('upload_file_size')
+    
+    if not temp_path or not os.path.exists(temp_path):
+        await update.message.reply_text(
+            "❌ *Error*\n\nTemporary file not found. Please upload again.",
+            parse_mode='Markdown',
+            reply_markup=get_back_menu()
+        )
+        return
+    
+    status_msg = await update.message.reply_text(
+        "\n"
+        "   📤 *SAVING FILE*          \n"
+        "\n\n"
+        f"*Destination:* `{dest_path}`\n\n"
+        "⏳ *Status:* Checking path...",
+        parse_mode='Markdown'
+    )
+    
+    try:
+        # Check if destination directory exists
+        dest_dir = os.path.dirname(dest_path)
+        if dest_dir and not os.path.exists(dest_dir):
+            await status_msg.edit_text(
+                "\n"
+                "   ❌ *DIRECTORY NOT FOUND* \n"
+                "\n\n"
+                f"*Path:* `{dest_dir}`\n\n"
+                "The destination directory does not exist.\n\n"
+                "_Create it first or choose another path._",
+                parse_mode='Markdown',
+                reply_markup=get_back_menu()
+            )
+            return
+        
+        # Check if file already exists
+        if os.path.exists(dest_path):
+            await status_msg.edit_text(
+                "\n"
+                "   ⚠️ *FILE EXISTS*         \n"
+                "\n\n"
+                f"*Path:* `{dest_path}`\n\n"
+                "A file already exists at this location.\n\n"
+                "_It will be overwritten._",
+                parse_mode='Markdown'
+            )
+            await asyncio.sleep(2)
+        
+        # Update status - copying
+        await status_msg.edit_text(
+            "\n"
+            "   📤 *SAVING FILE*          \n"
+            "\n\n"
+            f"*File:* `{file_name}`\n"
+            f"*Size:* {file_size / 1024:.2f} KB\n"
+            f"*Destination:* `{dest_path}`\n\n"
+            "⏳ *Status:* Copying file...",
+            parse_mode='Markdown'
+        )
+        
+        # Copy file to destination
+        import shutil
+        shutil.copy2(temp_path, dest_path)
+        
+        # Verify file was copied
+        if os.path.exists(dest_path):
+            actual_size = os.path.getsize(dest_path)
+            
+            # Clean up temp file
+            os.remove(temp_path)
+            
+            # Clear context
+            context.user_data['upload_temp_path'] = None
+            context.user_data['upload_file_name'] = None
+            context.user_data['upload_file_size'] = None
+            context.user_data['waiting_for'] = None
+            
+            # Success message
+            await status_msg.edit_text(
+                "\n"
+                "   ✅ *UPLOAD COMPLETE*     \n"
+                "\n\n"
+                f"*File:* `{file_name}`\n"
+                f"*Size:* {actual_size / 1024:.2f} KB\n"
+                f"*Location:* `{dest_path}`\n\n"
+                "✅ File uploaded successfully!",
+                parse_mode='Markdown',
+                reply_markup=get_back_menu()
+            )
+        else:
+            raise Exception("File copy verification failed")
+        
+    except Exception as e:
+        logger.error(f"Upload path error: {e}")
+        error_text = str(e).replace('`', "'")
+        await status_msg.edit_text(
+            "\n"
+            "   ❌ *UPLOAD FAILED*       \n"
+            "\n\n"
+            f"*Destination:* `{dest_path}`\n\n"
             f"*Error:* {error_text}",
             parse_mode='Markdown',
             reply_markup=get_back_menu()
